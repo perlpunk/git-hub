@@ -1169,6 +1169,15 @@ get-opts() {
   command="$1"; shift
   command_arguments=("$@")
 
+  # allow commands like "pr-list" to be called "pr list" also
+  source-ext help-functions.bash
+  local dash_cmd="$command-$1"
+  local help=$(help:all | grep "^$dash_cmd ")
+  if [[ "$help" =~ ^"$dash_cmd "  ]]; then
+    command="$dash_cmd"
+    command_arguments=("${command_arguments[@]:1}")
+  fi
+
   [[ $command == setup ]] ||
   [[ $command == config ]] ||
   [[ $command == config-unset ]] ||
