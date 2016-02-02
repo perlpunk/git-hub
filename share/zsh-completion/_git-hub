@@ -45,17 +45,25 @@ _git-hub() {
     repo)
         case $line[1] in
         clone|collabs|comment|fork|forks|issue|issue-close|issue-edit|issue-new|issue-resolve|issues|open|pr-diff|pr-fetch|pr-list|pr-merge|repo|repo-delete|repo-edit|repo-get|star|stars|trust|unstar|untrust|unwatch|url|watch|watchers)
-            if [[ $line[2] =~ "^((\w|-)+)/(.*)" ]];
+            [[ "$line[2]" =~ ^- ]] && return;
+            local repo_to_complete="$line[2]"
+            if [[ $repo_to_complete =~ "^((\w|-)+)/(.*)" ]];
             then
                 local username="$match[1]"
-                if [[ "$username" != "$__git_hub_lastusername" ]];
-                then
-                    __git_hub_lastusername=$username
-                    IFS=$'\n' set -A  __git_hub_reponames `git hub repos $username --raw`
+                local repo="$match[3]"
+                IFS=$'\n' set -A  reponames `git hub search-repo "$repo user:$username in:name fork:true" --raw --count 100`
+                compadd -X "Repos:" $reponames
+            elif [[ ${#repo_to_complete} -gt 1 ]]; then
+                local users
+                IFS=$'\n' set -A users `git hub search-user "$repo_to_complete in:login" --raw --count 100`
+                local count=${#users[@]}
+                if [[ $count -eq 1 ]]; then
+                    compadd -X "Users:" "$users[1]/" "$users[1]/."
+                else
+                    compadd -X "Users:" $users
                 fi
-                compadd -X "Repos:" $__git_hub_reponames
             else
-                _arguments "2:Repos:()"
+                compadd -X "Users:"
             fi
         ;;
         config|config-unset)

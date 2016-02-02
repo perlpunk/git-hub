@@ -5,6 +5,7 @@
 _git_hub() {
     local _opts=" -h --help --remote= --branch= --org= -c= --count= -a --all -q --quiet -v --verbose -r --raw -j --json -A --use-auth -C --no-cache --token= -d --dryrun -T -O -H -J -R -x"
     local subcommands="cache-clear clone collabs comment config config-keys config-list config-unset follow followers following follows fork forks gist gist-clone gist-delete gist-edit gist-fork gist-get gist-init gist-new gist-star gist-unstar gists git-hub-travis help info irc-enable irc-enable irc-url issue issue-close issue-edit issue-new issue-resolve issues keys keys-add member-add member-get member-remove members notify-list open org org-edit org-get org-members org-repos orgs pr-created pr-diff pr-fetch pr-involves pr-list pr-merge pr-new pr-queue repo repo-delete repo-edit repo-get repo-init repo-new repos scope-add scope-remove scopes search-issues search-repo search-user setup star starred stars team team-delete team-members team-new team-repo-add team-repos teams token-delete token-get token-new tokens trust unfollow unstar untrust unwatch upgrade url user user-edit user-get version watch watchers watching"
+    local repocommands="clone collabs comment fork forks issue issue-close issue-edit issue-new issue-resolve issues open pr-diff pr-fetch pr-list pr-merge repo repo-delete repo-edit repo-get star stars trust unstar untrust unwatch url watch watchers"
     local subcommand="$(__git_find_on_cmdline "$subcommands")"
 
     if [ -z "$subcommand" ]; then
@@ -34,18 +35,90 @@ _git_hub() {
             __gitcomp "$_opts"
             return
         ;;
-
-        *)
-            if [[ $subcommand == help ]]; then
-                __gitcomp "$subcommands"
-            elif [[ $subcommand == "config" || $subcommand == "config-unset" ]]; then
-                local config_keys
-                config_keys=`git hub config-keys`
-                __gitcomp "$config_keys"
-            fi
-        ;;
-
         esac
 
+        if [[ $subcommand == help ]]; then
+            __gitcomp "$subcommands"
+            return
+        elif [[ $subcommand == "config" || $subcommand == "config-unset" ]]; then
+            local config_keys
+            config_keys=`git hub config-keys`
+            __gitcomp "$config_keys"
+            return
+        fi
+
+        local repocommand="$(__git_find_on_cmdline "$repocommands")"
+        if [ -n "$repocommand" ]; then
+
+            local repo_to_complete="$cur"
+            # first, check the cache
+            local cached
+            __git_hub_try_cache "$repo_to_complete"
+
+            # note: username completion works only for lowercase at the
+            # moment. usernames with uppercase letters will be lowercased
+            if [[ "$repo_to_complete" =~ ^([a-zA-Z0-9_-]+)/(.*) ]];
+            then
+                # git hub repo foobar/<TAB>
+                local username="${BASH_REMATCH[1]}"
+                local repo="${BASH_REMATCH[2]}"
+                local reponames=("${cached[@]}")
+                if [[ -z "$cached" ]]; then
+                    # nothing in cache
+                    # echo $'\n'"Completing reponames..."
+                    reponames=( $( git hub search-repo "$repo user:$username in:name fork:true" --raw --count 100 ) )
+                    # save to cache
+                    __git_hub_last_repo_result=("${reponames[@]}")
+                    __git_hub_last_repo="$repo_to_complete"
+                fi
+                local comp="${reponames[@]}"
+                __gitcomp "$comp"
+
+            elif [[ ${#repo_to_complete} -gt 1 ]]; then
+                # git hub repo xy<TAB>
+                local users=("${cached[@]}")
+                if [[ -z "$cached" ]]; then
+                    # nothing in cache
+                    # echo $'\n'"Completing usernames..."
+                    users=( $(git hub search-user "$repo_to_complete in:login" --raw --count 100 | tr '[:upper:]' '[:lower:]' ) )
+                fi
+
+                local comp="${users[@]}"
+                COMPREPLY=( $( compgen -W "$comp" -- "$cur" ) )
+                local count=${#COMPREPLY[@]}
+                if [[ $count -eq 1 ]]; then
+                    users=("${COMPREPLY[0]}/" "${COMPREPLY[0]}/.")
+                    comp="${users[@]}"
+                fi
+                if [[ -z "$cached" ]]; then
+                    # save to cache
+                    __git_hub_last_repo_result=("${users[@]}")
+                    __git_hub_last_repo="$repo_to_complete"
+                fi
+                __gitcomp "$comp"
+
+            else
+                COMPREPLY=("")
+            fi
+
+        fi
+
+    fi
+}
+
+__git_hub_try_cache() {
+    local repo="$1"
+    # if we got 100 results that means that there were probably more, so the
+    # result is incomplete. We only return this cached result if the
+    # key equals the cache key from last time.
+    if [[ -n "$__git_hub_last_repo" ]]; then
+        if [[ "$__git_hub_last_repo" == "$repo" \
+            || ( \
+            ! ( "$repo" =~ /$ ) \
+            && "${repo:0:${#__git_hub_last_repo}}" == "$__git_hub_last_repo" \
+            && ${#__git_hub_last_repo_result[@]} -lt 100 \
+            ) ]]; then
+            cached=("${__git_hub_last_repo_result[@]}")
+        fi
     fi
 }
