@@ -744,6 +744,24 @@ If you used \f(CW\*(C`make install\*(C'\fR method, then run this again (after \f
 .SH "Command Completion"
 .IX Header "Command Completion"
 The \f(CW\*(C`git hub\*(C'\fR command supports \f(CW\*(C`<TAB>\*(C'\fR\-based command completion. If you don't use the \f(CW\*(C`.rc\*(C'\fR script (see Installation, above), you'll need to enable this manually to use it.
+.PP
+Completion is supported for subcommands, options and config keys.
+.PP
+\&\f(CW\*(C`git hub <TAB>\*(C'\fR
+.PP
+\&\f(CW\*(C`git hub pr\-list \-\-<TAB>\*(C'\fR
+.PP
+\&\f(CW\*(C`git hub config <TAB>\*(C'\fR
+.PP
+\&\f(CW\*(C`git hub help <TAB>\*(C'\fR
+.PP
+Additionally, user/repo names can be completed, but note that there might be some cases where this will not offer all possible names, because the search is restricted to 100 items.
+.PP
+For completing usernames, you have to type at least two characters.
+.PP
+\&\f(CW\*(C`git hub repo in<TAB>\*(C'\fR
+.PP
+\&\f(CW\*(C`git hub repo ingydotnet/<TAB>\*(C'\fR
 .SS "In Bash"
 .IX Subsection "In Bash"
 If your Bash setup does not already provide command completion for Git, you'll need to enable that first:
