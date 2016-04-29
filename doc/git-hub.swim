@@ -663,6 +663,26 @@ The `git hub` command supports `<TAB>`-based command completion. If you don't
 use the `.rc` script (see Installation, above), you'll need to enable this
 manually to use it.
 
+Completion is supported for subcommands, options and config keys.
+
+`git hub <TAB>`
+
+`git hub pr-list --<TAB>`
+
+`git hub config <TAB>`
+
+`git hub help <TAB>`
+
+Additionally, user/repo names can be completed, but note that there might
+be some cases where this will not offer all possible names, because the
+search is restricted to 100 items.
+
+For completing usernames, you have to type at least two characters.
+
+`git hub repo in<TAB>`
+
+`git hub repo ingydotnet/<TAB>`
+
 == In Bash
 
 If your Bash setup does not already provide command completion for Git, you'll
