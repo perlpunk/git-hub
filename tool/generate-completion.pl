@@ -127,6 +127,12 @@ _git-hub() {
     typeset -A opt_args
     local curcontext="$curcontext" state line context
 
+    local update_policy
+    zstyle -s ":completion:$curcontext:" cache-policy update_policy
+    if [[ -z "$update_policy" ]]; then
+        zstyle ":completion:$curcontext:" cache-policy _git_hub_caching_policy
+    fi
+
     _arguments -s \
         '1: :->subcmd' \
         '2: :->repo' \
@@ -150,25 +156,74 @@ _git-hub() {
 )
             [[ "\$line[2]" =~ ^- ]] && return;
             local repo_to_complete="\$line[2]"
-            if [[ \$repo_to_complete =~ "^((\\w|-)+)/(.*)" ]];
+            if [[ "\$repo_to_complete" =~ "^\@/?\$" || "\$repo_to_complete" =~ "^\@/(.*)" ]]
             then
-                local username="\$match[1]"
-                local repo="\$match[3]"
-                IFS=\$'\\n' set -A  reponames `git hub search-repo "\$repo user:\$username in:name fork:true" --raw --count 100`
-                compadd -X "Repos:" \$reponames
-            elif [[ \$\{#repo_to_complete\} -gt 1 ]]; then
+                local login=`git hub config login`
+                compadd -U -S '' "\$login/\$match[1]"
+                return
+            elif [[ "\$repo_to_complete" =~ "^\@.+/" ]]; then
+                repo_to_complete="\${repo_to_complete/\\\@}"
+                compadd -U -S '' "\$repo_to_complete"
+                return
+            fi
+
+            if [[ "\$repo_to_complete" =~ "^\@([a-z0-9_][a-z0-9_-]*)\$" ]];
+            then
                 local users
-                IFS=\$'\\n' set -A users `git hub search-user "\$repo_to_complete in:login" --raw --count 100`
-                local count=\${#users[@]}
-                if [[ \$count -eq 1 ]]; then
-                    compadd -X "Users:" "\$users[1]/" "\$users[1]/."
-                else
-                    compadd -X "Users:" \$users
+                local username="\$match[1]"
+
+                if [[ "\$#username" -lt 2 ]]; then
+                    compadd -x "Users (type at least two characters)"
+                    return
                 fi
+
+                local _git_hub_cached_users
+                local cache_key="git-hub-search-user-\$username"
+                if _cache_invalid \$cache_key || ! _retrieve_cache \$cache_key ; then
+                    users=( \$( git hub search-user "\$username in:login" --raw --count 100 | tr '[:upper:]' '[:lower:]' | sed -e 's/^/\@/' ) )
+                    _git_hub_cached_users=("\${users[\@]}")
+                    _store_cache \$cache_key _git_hub_cached_users
+                else
+                    users=("\${_git_hub_cached_users[\@]}")
+                fi
+
+                if [[ \${#users[\@]} -eq 1 ]]; then
+                    local user="\$users[1]"
+                    user="\${user/\\\@/}"
+                    compadd -S / -U -X "Users:" "\$user"
+                else
+                    compadd -U -X "Users:" \$users
+                fi
+
             else
-                compadd -X "Users:"
+                local username reponame short_reponame
+                if [[ "\$repo_to_complete" =~ "^([a-z0-9_][a-z0-9_-]+)/([a-zA-Z0-9_.-]*)" ]];
+                then
+                    local username="\$match[1]"
+                    local reponame="\$match[2]"
+                else
+                    # git hub repo foobar<TAB>
+                    username=`git hub config login`
+                    reponame="\$repo_to_complete"
+                    short_reponame=1
+                fi
+                local reponames
+
+                local _git_hub_cached_repos
+                local cache_key="git-hub-search-repo-\$username/repo-\$reponame"
+                if _cache_invalid \$cache_key || ! _retrieve_cache \$cache_key ; then
+                    IFS=\$'\\n' set -A reponames `git hub search-repo "\$reponame user:\$username in:name fork:true" --raw --count 100`
+                    _git_hub_cached_repos=("\${reponames[\@]}")
+                    _store_cache \$cache_key _git_hub_cached_repos
+                else
+                    reponames=("\${_git_hub_cached_repos[\@]}")
+                fi
+
+                [[ \$short_reponame ]] && reponames=("\${reponames[\@]/\$username\\/}")
+                compadd -X "Repos:" \$reponames
             fi
         ;;
+
         config|config-unset)
             local config_keys
             IFS=\$'\\n' set -A config_keys `git hub config-keys`
@@ -184,6 +239,14 @@ _git-hub() {
 }
 
 $function_list
+_git_hub_caching_policy() {
+    local -a oldp
+    # older than 20 minutes
+    oldp=( "\$1"(mm+20) )
+    (( \$#oldp )) && return 0
+    return 1
+}
+
 ...
 }
 
@@ -271,54 +334,73 @@ $function_list
         if [ -n "\$repocommand" ]; then
 
             local repo_to_complete="\$cur"
-            # first, check the cache
-            local cached
-            __git_hub_try_cache "\$repo_to_complete"
+            if [[ "\$repo_to_complete" == "\@" ]]; then
+                local login=`git hub config login`
+                COMPREPLY=("\$login/")
+                return
+            elif [[ "\$repo_to_complete" =~ ^\@/ ]]; then
+                local login=`git hub config login`
+                repo_to_complete="\${repo_to_complete/\\\@/\$login}"
+            elif [[ "\$repo_to_complete" =~ ^\@.+/ ]]; then
+                repo_to_complete="\${repo_to_complete/\\\@}"
+            fi
 
             # note: username completion works only for lowercase at the
             # moment. usernames with uppercase letters will be lowercased
-            if [[ "\$repo_to_complete" =~ ^([a-zA-Z0-9_-]+)/(.*) ]];
+            if [[ "\$repo_to_complete" =~ ^@([a-z0-9_][a-z0-9_-]+) ]];
             then
-                # git hub repo foobar/<TAB>
+                # git hub repo \@foo<TAB>
                 local username="\${BASH_REMATCH[1]}"
-                local repo="\${BASH_REMATCH[2]}"
+                # first, check the cache
+                local cached
+                __git_hub_try_cache "user" "\$username"
+                local users=("\${cached[\@]}")
+                if [[ -z "\$cached" ]]; then
+                    # nothing in cache
+                    # echo \$'\\n'"Completing usernames..."
+                    users=( \$(git hub search-user "\$username in:login" --raw --count 100 | tr '[:upper:]' '[:lower:]' | sed -e 's/^/\@/' ) )
+                fi
+                local comp="\${users[\@]}"
+                COMPREPLY=( \$( compgen -W "\$comp" -- "\@\$username" ) )
+                local count=\${#COMPREPLY[\@]}
+                if [[ \$count -eq 1 ]]; then
+                    local user="\${COMPREPLY[0]}"
+                    user="\${user/\\\@/}"
+                    COMPREPLY=("\$user/")
+                fi
+                if [[ -z "\$cached" ]]; then
+                    __git_hub_save_user_cache "\$username"
+                fi
+
+            else
+                local username reponame short_reponame
+                if [[ "\$repo_to_complete" =~ ^([a-zA-Z0-9_-]+)/(.*) ]];
+                then
+                    # git hub repo foobar/<TAB>
+                    username="\${BASH_REMATCH[1]}"
+                    reponame="\${BASH_REMATCH[2]}"
+                else
+                    # git hub repo foobar<TAB>
+                    username=`git hub config login`
+                    reponame="\$repo_to_complete"
+                    short_reponame=1
+                fi
+
+                # first, check the cache
+                local cached
+                __git_hub_try_cache "repo" "\$username/\$reponame"
                 local reponames=("\${cached[\@]}")
                 if [[ -z "\$cached" ]]; then
                     # nothing in cache
                     # echo \$'\\n'"Completing reponames..."
-                    reponames=( \$( git hub search-repo "\$repo user:\$username in:name fork:true" --raw --count 100 ) )
-                    # save to cache
-                    __git_hub_last_repo_result=("\${reponames[\@]}")
-                    __git_hub_last_repo="\$repo_to_complete"
+                    reponames=( \$( git hub search-repo "\$reponame user:\$username in:name fork:true" --raw --count 100 ) )
+                    __git_hub_save_repo_cache "\$username/\$reponame"
                 fi
+                [[ \$short_reponame ]] && reponames=("\${reponames[\@]/\$username\\/}")
                 local comp="\${reponames[\@]}"
-                __gitcomp "\$comp"
+                [[ \$short_reponame ]] || reponame="\$username/\$reponame"
+                COMPREPLY=( \$( compgen -W "\$comp" -- "\$reponame" ) )
 
-            elif [[ \${#repo_to_complete} -gt 1 ]]; then
-                # git hub repo xy<TAB>
-                local users=("\${cached[@]}")
-                if [[ -z "\$cached" ]]; then
-                    # nothing in cache
-                    # echo \$'\\n'"Completing usernames..."
-                    users=( \$(git hub search-user "\$repo_to_complete in:login" --raw --count 100 | tr '[:upper:]' '[:lower:]' ) )
-                fi
-
-                local comp="\${users[\@]}"
-                COMPREPLY=( \$( compgen -W "\$comp" -- "\$cur" ) )
-                local count=\${#COMPREPLY[\@]}
-                if [[ \$count -eq 1 ]]; then
-                    users=("\${COMPREPLY[0]}/" "\${COMPREPLY[0]}/.")
-                    comp="\${users[\@]}"
-                fi
-                if [[ -z "\$cached" ]]; then
-                    # save to cache
-                    __git_hub_last_repo_result=("\${users[\@]}")
-                    __git_hub_last_repo="\$repo_to_complete"
-                fi
-                __gitcomp "\$comp"
-
-            else
-                COMPREPLY=("")
             fi
 
         fi
@@ -326,20 +408,36 @@ $function_list
     fi
 }
 
+__git_hub_save_repo_cache() {
+    __git_hub_last_repo="\$1"
+    __git_hub_last_repo_result=("\${reponames[@]}")
+}
+
+__git_hub_save_user_cache() {
+    __git_hub_last_user="\$1"
+    __git_hub_last_user_result=("\${users[@]}")
+}
+
 __git_hub_try_cache() {
-    local repo="\$1"
+    local cachetype="\$1"
+    local name="\$2"
+    local last="__git_hub_last_\$cachetype"
+    local last_result="__git_hub_last_\${cachetype}_result"
     # if we got 100 results that means that there were probably more, so the
     # result is incomplete. We only return this cached result if the
     # key equals the cache key from last time.
-    if [[ -n "\$__git_hub_last_repo" ]]; then
-        if [[ "\$__git_hub_last_repo" == "\$repo" \\
-            || ( \\
-            ! ( "\$repo" =~ /\$ ) \\
-            && "\${repo:0:\${#__git_hub_last_repo}}" == "\$__git_hub_last_repo" \\
-            && \${#__git_hub_last_repo_result[\@]} -lt 100 \\
-            ) ]]; then
-            cached=("\${__git_hub_last_repo_result[\@]}")
-        fi
+    local key="\${!last}"
+    local result
+    if [[ \$cachetype == user ]]; then
+        result=("\${__git_hub_last_user_result[@]}")
+    elif [[ \$cachetype == repo ]]; then
+        result=("\${__git_hub_last_repo_result[@]}")
+    fi
+    if [[ "\$key" == "\$name" \\
+        || ( "\${name:0:\${#key}}" == "\$key" \\
+        && \${#result[@]} -lt 100 \\
+        ) ]]; then
+        cached=("\${result[@]}")
     fi
 }
 ...
