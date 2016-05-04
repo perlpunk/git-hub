@@ -684,9 +684,9 @@ but you will only see those starting with the prefix you typed.
 
 == Completing repository names
 
-    git hub repo <TAB>          complete all your repos
-    git hub repo foo<TAB>       complete all your repos starting with foo
-    git hub repo @<TAB>         short cut for git hub repo your-login/
+    git hub repo <TAB>          shortcut for your-login/<TAB>
+    git hub repo @<TAB>         shortcut for your-login/<TAB>
+    git hub repo foo<TAB>       shortcut for your-login/foo<TAB>
     git hub repo user/<TAB>     complete repos of 'user'
     git hub repo user/foo<TAB>  complete repos of 'user' starting with foo
 
