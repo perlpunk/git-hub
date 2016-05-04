@@ -156,7 +156,9 @@ _git-hub() {
 )
             [[ "\$line[2]" =~ ^- ]] && return;
             local repo_to_complete="\$line[2]"
-            if [[ "\$repo_to_complete" =~ "^\@/?\$" || "\$repo_to_complete" =~ "^\@/(.*)" ]]
+            if [[ "\$repo_to_complete" =~ "^\@/?\$" || \\
+                "\$repo_to_complete" =~ "^\@/(.*)" || \\
+                "\$repo_to_complete" =~ "^/?([a-z0-9_-]*)\$" ]];
             then
                 local login=`git hub config login`
                 compadd -U -S '' "\$login/\$match[1]"
@@ -196,7 +198,7 @@ _git-hub() {
                 fi
 
             else
-                local username reponame short_reponame
+                local username reponame
                 if [[ "\$repo_to_complete" =~ "^([a-z0-9_][a-z0-9_-]+)/([a-zA-Z0-9_.-]*)" ]];
                 then
                     local username="\$match[1]"
@@ -205,7 +207,6 @@ _git-hub() {
                     # git hub repo foobar<TAB>
                     username=`git hub config login`
                     reponame="\$repo_to_complete"
-                    short_reponame=1
                 fi
                 local reponames
 
@@ -219,7 +220,6 @@ _git-hub() {
                     reponames=("\${_git_hub_cached_repos[\@]}")
                 fi
 
-                [[ \$short_reponame ]] && reponames=("\${reponames[\@]/\$username\\/}")
                 compadd -X "Repos:" \$reponames
             fi
         ;;
@@ -334,15 +334,19 @@ $function_list
         if [ -n "\$repocommand" ]; then
 
             local repo_to_complete="\$cur"
-            if [[ "\$repo_to_complete" == "\@" ]]; then
+            if [[ "\$repo_to_complete" == "" || "\$repo_to_complete" == "\@" ]]; then
                 local login=`git hub config login`
                 COMPREPLY=("\$login/")
                 return
-            elif [[ "\$repo_to_complete" =~ ^\@/ ]]; then
+            elif [[ "\$repo_to_complete" =~ ^\@/ || "\$repo_to_complete" =~ ^/ ]]; then
                 local login=`git hub config login`
-                repo_to_complete="\${repo_to_complete/\\\@/\$login}"
+                repo_to_complete="\${repo_to_complete/\\\@}"
+                repo_to_complete="\$login""\$repo_to_complete"
             elif [[ "\$repo_to_complete" =~ ^\@.+/ ]]; then
                 repo_to_complete="\${repo_to_complete/\\\@}"
+            elif [[ "\$repo_to_complete" =~ ^([a-zA-Z0-9_-]+)\$ ]]; then
+                local login=`git hub config login`
+                repo_to_complete="\$login/\$repo_to_complete"
             fi
 
             # note: username completion works only for lowercase at the
@@ -373,7 +377,7 @@ $function_list
                 fi
 
             else
-                local username reponame short_reponame
+                local username reponame
                 if [[ "\$repo_to_complete" =~ ^([a-zA-Z0-9_-]+)/(.*) ]];
                 then
                     # git hub repo foobar/<TAB>
@@ -383,7 +387,6 @@ $function_list
                     # git hub repo foobar<TAB>
                     username=`git hub config login`
                     reponame="\$repo_to_complete"
-                    short_reponame=1
                 fi
 
                 # first, check the cache
@@ -396,10 +399,8 @@ $function_list
                     reponames=( \$( git hub search-repo "\$reponame user:\$username in:name fork:true" --raw --count 100 ) )
                     __git_hub_save_repo_cache "\$username/\$reponame"
                 fi
-                [[ \$short_reponame ]] && reponames=("\${reponames[\@]/\$username\\/}")
                 local comp="\${reponames[\@]}"
-                [[ \$short_reponame ]] || reponame="\$username/\$reponame"
-                COMPREPLY=( \$( compgen -W "\$comp" -- "\$reponame" ) )
+                COMPREPLY=( \$( compgen -W "\$comp" -- "\$username/\$reponame" ) )
 
             fi
 
