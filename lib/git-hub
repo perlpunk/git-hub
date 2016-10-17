@@ -1708,6 +1708,15 @@ color-table-row() {
 
 
 callable-or-source() {
+  if [[ $SERVICE_NAME == "bb" ]]; then
+    case "$1" in
+      repo|repos)
+      ;;
+      *)
+        echo "Command $1 not supported for bitbucket"
+        return 0
+    esac
+  fi
   if can "command:$1"; then
     return 0
   else
