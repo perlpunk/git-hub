@@ -26,7 +26,11 @@ format-entry:repos() {
 
 command:repo() {
   get-args '?owner:get-user/repo:get-repo'
-  api-get "/repos/$owner/$repo"
+  local url="/repos/$owner/$repo"
+  if [[ $SERVICE_NAME = "bb" ]]; then
+    local url="/repositories/$owner/$repo"
+  fi
+  api-get "$url"
 }
 
 ok:repo() {
@@ -37,6 +41,15 @@ ok:repo() {
     stargazers_count open_issues pushed_at created_at
     privatex
   )
+  if [[ $SERVICE_NAME = "bb" ]]; then
+    fields=(
+      full_name links__html__href language
+      created_on updated_on
+      owner__username
+      owner__display_name
+      description
+    )
+  fi
   report-data
 }
 

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+export SERVICE_NAME="bb"
+
+export GIT_HUB_API_URI="https://api.bitbucket.org/2.0"
+git hub $*
+
