@@ -22,6 +22,7 @@ format-entry:repos() {
   if "$raw_output"; then
     out "$3"
   else
+    [[ "$SERVICE_NAME" = "bb" ]] && desc="${desc/\\r*}"
     color-table-row \
       "%d)"  LABEL "$number" \
       "(%s) " DATE "$pushed_at" \
