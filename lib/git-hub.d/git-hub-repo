@@ -5,9 +5,15 @@ set -e
 command:repos() {
   get-args owner:get-user
   title="$(colorize LABEL "Repos for '$owner':" )"
+  local url="/users/$owner/repos?sort=pushed;per_page=PER_PAGE"
+  local key_prefix
+  if [[ $SERVICE_NAME = "bb" ]]; then
+    url="/repositories/$owner"
+    key_prefix=/values
+  fi
   report-list \
-    "/users/$owner/repos?sort=pushed;per_page=PER_PAGE" \
-    'pushed_at full_name description'
+    "$url"\
+    'updated_on full_name description'
 }
 
 format-entry:repos() {
@@ -28,7 +34,7 @@ command:repo() {
   get-args '?owner:get-user/repo:get-repo'
   local url="/repos/$owner/$repo"
   if [[ $SERVICE_NAME = "bb" ]]; then
-    local url="/repositories/$owner/$repo"
+    url="/repositories/$owner/$repo"
   fi
   api-get "$url"
 }
@@ -44,9 +50,13 @@ ok:repo() {
   if [[ $SERVICE_NAME = "bb" ]]; then
     fields=(
       full_name links__html__href language
+      website
       created_on updated_on
       owner__username
       owner__display_name
+      links__clone__0__href
+      links__clone__1__href
+      scm
       description
     )
   fi
